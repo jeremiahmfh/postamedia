@@ -18,6 +18,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Yoco API Configuration
 const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY;
 const YOCO_API_URL = 'https://payments.yoco.com/api/checkouts';
+const YOCO_PAYOUT_URL = 'https://payments.yoco.com/api/payouts';
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -75,7 +76,7 @@ app.post('/api/payment', async (req, res) => {
   }
 });
 
-// Withdrawal endpoint (simplified)
+// Withdrawal endpoint with Yoco payout API
 app.post('/api/withdraw', async (req, res) => {
   try {
     const { userId, amount, currency, bankDetails } = req.body;
@@ -84,21 +85,57 @@ app.post('/api/withdraw', async (req, res) => {
     if (!userId || !amount || !currency || !bankDetails) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Missing required fields' 
+        error: 'Missing required fields: userId, amount, currency, bankDetails' 
       });
     }
 
-    // For now, return success (would integrate with Yoco payout API in production)
+    // Validate bank details
+    if (!bankDetails.accountNumber || !bankDetails.bankName || !bankDetails.accountHolder) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required bank details: accountNumber, bankName, accountHolder' 
+      });
+    }
+
+    console.log('Processing withdrawal:', { userId, amount, currency, bankDetails });
+
+    // Create payout with Yoco
+    const amountInCents = Math.round(amount * 100);
+    const yocoResponse = await axios.post(YOCO_PAYOUT_URL, {
+      amount: amountInCents,
+      currency: currency,
+      beneficiary: {
+        account_number: bankDetails.accountNumber,
+        bank_name: bankDetails.bankName,
+        account_holder: bankDetails.accountHolder,
+        account_type: bankDetails.accountType || 'cheque'
+      },
+      metadata: {
+        userId,
+        withdrawalType: 'user_withdrawal'
+      }
+    }, {
+      headers: {
+        'Authorization': `Bearer ${YOCO_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const payoutData = yocoResponse.data;
+    console.log('Yoco payout response:', payoutData);
+
     res.json({
       success: true,
-      message: 'Withdrawal request processed',
-      withdrawalId: `WD-${Date.now()}`
+      message: 'Withdrawal request processed successfully',
+      withdrawalId: payoutData.id,
+      payoutId: payoutData.id,
+      status: payoutData.status
     });
   } catch (error) {
-    console.error('Withdrawal error:', error.message);
+    console.error('Withdrawal error:', error.response?.data || error.message);
     res.status(500).json({ 
       success: false, 
-      error: 'Failed to process withdrawal' 
+      error: error.response?.data?.message || 'Failed to process withdrawal request' 
     });
   }
 });
