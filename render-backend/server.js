@@ -18,7 +18,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Yoco API Configuration
 const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY;
 const YOCO_API_URL = 'https://payments.yoco.com/api/checkouts';
-const YOCO_PAYOUT_URL = 'https://payments.yoco.com/api/payouts';
+const YOCO_PAYOUT_URL = 'https://payments.yoco.com/v1/payouts';
 
 // Health check endpoint
 app.get('/health', (req, res) => {
