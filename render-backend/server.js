@@ -17,7 +17,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Yoco API Configuration
 const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY;
-const YOCO_API_URL = 'https://online.yoco.com/v1/charges';
+const YOCO_API_URL = 'https://payments.yoco.com/api/checkouts';
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -39,11 +39,13 @@ app.post('/api/payment', async (req, res) => {
 
     console.log('Creating payment:', { amount, currency, userId });
 
-    // Create charge with Yoco
+    // Create checkout with Yoco
+    const amountInCents = Math.round(amount * 100);
     const yocoResponse = await axios.post(YOCO_API_URL, {
-      amount_in_cents: Math.round(amount * 100),
+      amount: amountInCents,
       currency: currency,
-      description: description || 'PostaMedia wallet deposit',
+      success_url: 'https://postamedia.co.za/business/dashboard',
+      cancel_url: 'https://postamedia.co.za/business/dashboard',
       metadata: {
         userId,
         ...metadata
