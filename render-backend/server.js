@@ -4,6 +4,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const axios = require('axios');
 const { createWorker } = require('tesseract.js');
+const sharp = require('sharp');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -153,6 +154,19 @@ app.post('/api/ocr', async (req, res) => {
       });
     }
 
+    // Crop bottom 300px using sharp - WhatsApp view counts are at the bottom
+    const image = sharp(imageData);
+    const metadata = await image.metadata();
+    const cropHeight = Math.min(300, metadata.height);
+    const cropY = Math.max(0, metadata.height - cropHeight);
+    
+    const croppedImageData = await image
+      .extract({ left: 0, top: cropY, width: metadata.width, height: cropHeight })
+      .resize({ width: metadata.width * 4, height: cropHeight * 4, kernel: sharp.kernel.lanczos3 })
+      .grayscale()
+      .normalize()
+      .toBuffer();
+
     // Create Tesseract worker
     const worker = await createWorker('eng', 1, {
       logger: () => {},
@@ -165,8 +179,8 @@ app.post('/api/ocr', async (req, res) => {
       preserve_interword_spaces: '1',
     });
 
-    // Perform OCR
-    const { data } = await worker.recognize(imageData);
+    // Perform OCR on cropped image
+    const { data } = await worker.recognize(croppedImageData);
     await worker.terminate();
 
     const text = data.text;
