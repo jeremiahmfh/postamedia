@@ -31,6 +31,15 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'PostaMedia backend is running' });
 });
 
+// Explicit OPTIONS handler for CORS preflight
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'https://postamedia.co.za');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(200);
+});
+
 // Payment endpoint
 app.post('/api/payment', async (req, res) => {
   try {
