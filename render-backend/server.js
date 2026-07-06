@@ -160,9 +160,14 @@ app.post('/api/ocr', async (req, res) => {
     const cropHeight = Math.min(300, metadata.height);
     const cropY = Math.max(0, metadata.height - cropHeight);
     
+    // Ensure minimum dimensions for Tesseract
+    const minWidth = 100;
+    const finalWidth = Math.max(metadata.width, minWidth);
+    const finalHeight = Math.max(cropHeight, 50);
+    
     const croppedImageData = await image
       .extract({ left: 0, top: cropY, width: metadata.width, height: cropHeight })
-      .resize({ width: metadata.width * 4, height: cropHeight * 4, kernel: sharp.kernel.lanczos3 })
+      .resize({ width: finalWidth * 4, height: finalHeight * 4, kernel: sharp.kernel.lanczos3 })
       .grayscale()
       .normalize()
       .toBuffer();
