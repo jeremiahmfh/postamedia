@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const { createWorker } = require('tesseract.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,10 +22,6 @@ app.use(bodyParser.urlencoded({ extended: true }));
 const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY;
 const YOCO_API_URL = 'https://payments.yoco.com/api/checkouts';
 const YOCO_PAYOUT_URL = 'https://online.yoco.com/v1/payouts';
-
-// Azure Computer Vision Configuration
-const AZURE_ENDPOINT = process.env.AZURE_ENDPOINT || 'https://postamediaresources.cognitiveservices.azure.com/';
-const AZURE_API_KEY = process.env.AZURE_API_KEY || '29NAz9AntOICwEZzvdAUEolO3diSC1iTwj3DJdFAaEh6xiQB2EGtJQQJ99CGACrIdLPXJ3w3AAAFACOG7UG6';
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -130,7 +127,7 @@ app.post('/api/withdraw', async (req, res) => {
   }
 });
 
-// OCR endpoint using Azure Computer Vision Read API (better for scattered text)
+// OCR endpoint using Tesseract.js (server-side)
 app.post('/api/ocr', async (req, res) => {
   try {
     const { imageUrl } = req.body;
@@ -142,12 +139,11 @@ app.post('/api/ocr', async (req, res) => {
       });
     }
 
-    console.log('Processing OCR request');
+    console.log('Processing OCR request with Tesseract.js');
 
-    // Convert base64 to binary buffer
+    // Convert base64 to buffer for Tesseract
     let imageData;
     if (imageUrl.startsWith('data:image/')) {
-      // Extract base64 data
       const base64Data = imageUrl.split(',')[1];
       imageData = Buffer.from(base64Data, 'base64');
     } else {
@@ -157,72 +153,85 @@ app.post('/api/ocr', async (req, res) => {
       });
     }
 
-    // Use Read API instead of OCR API for better layout analysis
-    const readUrl = `${AZURE_ENDPOINT}vision/v3.2/read/analyze`;
-    
-    // Submit image for analysis
-    const submitResponse = await axios.post(readUrl, imageData, {
-      headers: {
-        'Ocp-Apim-Subscription-Key': AZURE_API_KEY,
-        'Content-Type': 'application/octet-stream'
-      }
+    // Create Tesseract worker
+    const worker = await createWorker('eng', 1, {
+      logger: () => {},
     });
 
-    const operationLocation = submitResponse.headers['operation-url'] || submitResponse.headers['Operation-Location'];
-    console.log('Operation location:', operationLocation);
+    // Configure Tesseract for better small text recognition
+    await worker.setParameters({
+      tessedit_char_whitelist: '0123456789 Views●○',
+      tessedit_pageseg_mode: '6',
+      preserve_interword_spaces: '1',
+    });
 
-    if (!operationLocation) {
-      throw new Error('No operation location returned from Azure');
-    }
+    // Perform OCR
+    const { data } = await worker.recognize(imageData);
+    await worker.terminate();
 
-    // Poll for results
-    let ocrResult = null;
-    let attempts = 0;
-    const maxAttempts = 20;
+    const text = data.text;
+    console.log('OCR extracted text:', text);
 
-    while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-      
-      const statusResponse = await axios.get(operationLocation, {
-        headers: {
-          'Ocp-Apim-Subscription-Key': AZURE_API_KEY
-        }
-      });
+    // Reconstruct scattered text
+    const ocrLines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    const reconstructedText = ocrLines.join(' ');
+    const cleanedText = reconstructedText.replace(/\s+/g, ' ').trim();
+    console.log('Cleaned text:', cleanedText);
 
-      ocrResult = statusResponse.data;
-      console.log('Poll status:', ocrResult.status);
+    // Extract all numbers
+    const allNumbers = cleanedText.match(/\d{1,5}/g) || [];
+    console.log('All numbers found:', allNumbers);
 
-      if (ocrResult.status === 'succeeded') {
-        break;
-      } else if (ocrResult.status === 'failed') {
-        throw new Error('Azure Read API operation failed');
+    // Rule: Views will always be the last number in the array
+    if (allNumbers.length > 0) {
+      const lastNumber = parseInt(allNumbers[allNumbers.length - 1]);
+      if (lastNumber > 0 && lastNumber <= 10000) {
+        console.log('Using last number as view count:', lastNumber);
+        return res.json({
+          success: true,
+          viewCount: lastNumber,
+          extractedText: cleanedText
+        });
       }
-
-      attempts++;
     }
 
-    if (!ocrResult || ocrResult.status !== 'succeeded') {
-      throw new Error('Azure Read API operation timed out');
-    }
+    // Check if "views" or similar keywords are present
+    const hasViewsKeyword = /views?|iews?/i.test(cleanedText);
 
-    console.log('Azure Read result:', JSON.stringify(ocrResult, null, 2));
-
-    // Extract text from Read API result
-    let extractedText = '';
-    if (ocrResult.analyzeResult && ocrResult.analyzeResult.readResults) {
-      ocrResult.analyzeResult.readResults.forEach(readResult => {
-        if (readResult.lines) {
-          readResult.lines.forEach(line => {
-            extractedText += line.text + ' ';
-          });
+    if (hasViewsKeyword && allNumbers.length > 0) {
+      const words = cleanedText.split(' ');
+      let viewCount = null;
+      let lastViewIndex = -1;
+      
+      for (let i = words.length - 1; i >= 0; i--) {
+        const word = words[i].toLowerCase();
+        if (word.includes('view') || word.includes('iew')) {
+          lastViewIndex = i;
+          break;
         }
-      });
+      }
+      
+      if (lastViewIndex !== -1) {
+        if (lastViewIndex > 0 && /\d{1,5}/.test(words[lastViewIndex - 1])) {
+          viewCount = parseInt(words[lastViewIndex - 1].match(/\d{1,5}/)[0]);
+        } else if (lastViewIndex < words.length - 1 && /\d{1,5}/.test(words[lastViewIndex + 1])) {
+          viewCount = parseInt(words[lastViewIndex + 1].match(/\d{1,5}/)[0]);
+        } else if (/\d{1,5}/.test(words[lastViewIndex])) {
+          viewCount = parseInt(words[lastViewIndex].match(/\d{1,5}/)[0]);
+        }
+      }
+      
+      if (viewCount && viewCount > 0 && viewCount <= 10000) {
+        console.log('Found view count near last keyword:', viewCount);
+        return res.json({
+          success: true,
+          viewCount: viewCount,
+          extractedText: cleanedText
+        });
+      }
     }
 
-    extractedText = extractedText.trim();
-    console.log('Extracted text:', extractedText);
-
-    // Extract view count using patterns
+    // Fallback patterns
     const patterns = [
       /(\d{1,5})\s*iews?/i,
       /(\d{1,5})\s*iew\s+s/i,
@@ -235,39 +244,49 @@ app.post('/api/ocr', async (req, res) => {
       /view\s*(\d{1,5})/i,
     ];
 
-    let viewCount = null;
-    
-    // Rule: Views will always be the last number in the array
-    const allNumbers = extractedText.match(/\d{1,5}/g) || [];
-    if (allNumbers.length > 0) {
-      const lastNumber = parseInt(allNumbers[allNumbers.length - 1]);
-      if (lastNumber > 0 && lastNumber <= 10000) {
-        viewCount = lastNumber;
-      }
-    }
-
-    // Fallback to pattern matching if last number rule fails
-    if (!viewCount) {
-      for (const pattern of patterns) {
-        const match = extractedText.match(pattern);
-        if (match) {
-          viewCount = parseInt(match[1]);
-          break;
+    for (const p of patterns) {
+      const m = cleanedText.match(p);
+      if (m) {
+        const n = parseInt(m[1]);
+        if (n > 0 && n <= 10000) {
+          console.log('Matched pattern:', p, 'Result:', n);
+          return res.json({
+            success: true,
+            viewCount: n,
+            extractedText: cleanedText
+          });
         }
       }
     }
 
+    // Last resort: largest reasonable number
+    if (hasViewsKeyword && allNumbers.length > 0) {
+      const reasonableNumbers = allNumbers
+        .map(n => parseInt(n))
+        .filter(n => n > 0 && n <= 10000 && n > 5);
+      
+      if (reasonableNumbers.length > 0) {
+        const maxNumber = Math.max(...reasonableNumbers);
+        console.log('Using fallback - largest reasonable number:', maxNumber);
+        return res.json({
+          success: true,
+          viewCount: maxNumber,
+          extractedText: cleanedText
+        });
+      }
+    }
+
     res.json({
-      success: true,
-      viewCount: viewCount,
-      extractedText: extractedText,
-      rawResult: ocrResult
+      success: false,
+      viewCount: null,
+      extractedText: cleanedText,
+      error: 'Could not extract view count'
     });
   } catch (error) {
-    console.error('OCR error:', error.response?.data || error.message);
+    console.error('Tesseract OCR error:', error);
     res.status(500).json({
       success: false,
-      error: error.response?.data?.error?.message || 'Failed to process OCR'
+      error: 'Failed to process OCR'
     });
   }
 });
