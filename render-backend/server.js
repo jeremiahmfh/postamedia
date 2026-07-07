@@ -28,8 +28,8 @@ const YOCO_PAYOUT_URL = 'https://online.yoco.com/v1/payouts';
 // SMTP Configuration for HostAfrica Email
 const SMTP_CONFIG = {
   host: process.env.SMTP_HOST || 'mail.postamedia.co.za',
-  port: process.env.SMTP_PORT || 587,
-  secure: false, // false for 587 (TLS/STARTTLS), true for 465 (SSL)
+  port: process.env.SMTP_PORT || 465,
+  secure: true, // true for 465 (SSL), false for 587 (TLS/STARTTLS)
   auth: {
     user: process.env.SMTP_USER || 'noreply@postamedia.co.za',
     pass: process.env.SMTP_PASS
