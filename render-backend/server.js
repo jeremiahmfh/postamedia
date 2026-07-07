@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const axios = require('axios');
 const { createWorker } = require('tesseract.js');
 const sharp = require('sharp');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,9 +25,103 @@ const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY;
 const YOCO_API_URL = 'https://payments.yoco.com/api/checkouts';
 const YOCO_PAYOUT_URL = 'https://online.yoco.com/v1/payouts';
 
+// SMTP Configuration for HostAfrica Email
+const SMTP_CONFIG = {
+  host: process.env.SMTP_HOST || 'mail.postamedia.co.za',
+  port: process.env.SMTP_PORT || 587,
+  secure: false, // false for 587 (TLS/STARTTLS), true for 465 (SSL)
+  auth: {
+    user: process.env.SMTP_USER || 'noreply@postamedia.co.za',
+    pass: process.env.SMTP_PASS
+  }
+};
+
+// Create email transporter
+const transporter = nodemailer.createTransport(SMTP_CONFIG);
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'PostaMedia backend is running' });
+});
+
+// Email endpoint for sending OTP
+app.post('/api/send-email', async (req, res) => {
+  try {
+    const { email, otp, type = 'verification' } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: email, otp'
+      });
+    }
+
+    console.log('Sending email:', { email, otp, type });
+
+    const expirationTime = new Date(Date.now() + 15 * 60 * 1000);
+    const formattedTime = expirationTime.toLocaleString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    let subject, html;
+
+    if (type === 'verification') {
+      subject = 'PostaMedia - Verification Code';
+      html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #10b981;">PostaMedia</h2>
+          <h3>Email Verification</h3>
+          <p>Your verification code is:</p>
+          <div style="background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; color: #10b981; letter-spacing: 5px;">${otp}</span>
+          </div>
+          <p>This code expires at <strong>${formattedTime}</strong>.</p>
+          <p>If you didn't request this code, please ignore this email.</p>
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+          <p style="color: #6b7280; font-size: 12px;">&copy; ${new Date().getFullYear()} PostaMedia. All rights reserved.</p>
+        </div>
+      `;
+    } else if (type === 'reset') {
+      subject = 'PostaMedia - Password Reset Code';
+      html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #10b981;">PostaMedia</h2>
+          <h3>Password Reset</h3>
+          <p>Your password reset code is:</p>
+          <div style="background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; color: #10b981; letter-spacing: 5px;">${otp}</span>
+          </div>
+          <p>This code expires at <strong>${formattedTime}</strong>.</p>
+          <p>If you didn't request this code, please ignore this email.</p>
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+          <p style="color: #6b7280; font-size: 12px;">&copy; ${new Date().getFullYear()} PostaMedia. All rights reserved.</p>
+        </div>
+      `;
+    }
+
+    const mailOptions = {
+      from: `"PostaMedia" <${process.env.SMTP_USER || 'noreply@postamedia.co.za'}>`,
+      to: email,
+      subject: subject,
+      html: html
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    console.log('Email sent successfully to:', email);
+    res.json({
+      success: true,
+      message: 'Email sent successfully'
+    });
+  } catch (error) {
+    console.error('Email send error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send email'
+    });
+  }
 });
 
 // Explicit OPTIONS handler for CORS preflight
