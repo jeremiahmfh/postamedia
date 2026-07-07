@@ -57,6 +57,12 @@ app.post('/api/send-email', async (req, res) => {
     }
 
     console.log('Sending email:', { email, otp, type });
+    console.log('SMTP Config:', {
+      host: SMTP_CONFIG.host,
+      port: SMTP_CONFIG.port,
+      secure: SMTP_CONFIG.secure,
+      user: SMTP_CONFIG.auth.user
+    });
 
     const expirationTime = new Date(Date.now() + 15 * 60 * 1000);
     const formattedTime = expirationTime.toLocaleString('en-US', {
