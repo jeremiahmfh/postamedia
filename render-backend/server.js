@@ -2,10 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const axios = require('axios');
-const { createWorker } = require('tesseract.js');
-const sharp = require('sharp');
-const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,136 +9,37 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'https://postamedia.co.za',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  credentials: true
 }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Yoco API Configuration
+// Firebase Admin SDK initialization - commented out for testing
+/*
+const admin = require('firebase-admin');
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: process.env.FIREBASE_DATABASE_URL
+});
+
+const db = admin.firestore();
+
 const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY;
-const YOCO_API_URL = 'https://payments.yoco.com/api/checkouts';
+const YOCO_API_URL = 'https://online.yoco.com/v1/charges';
 const YOCO_PAYOUT_URL = 'https://online.yoco.com/v1/payouts';
-
-// SMTP Configuration for HostAfrica Email
-const SMTP_CONFIG = {
-  host: process.env.SMTP_HOST || 'mail.postamedia.co.za',
-  port: process.env.SMTP_PORT || 465,
-  secure: true, // true for 465 (SSL), false for 587 (TLS/STARTTLS)
-  auth: {
-    user: process.env.SMTP_USER || 'noreply@postamedia.co.za',
-    pass: process.env.SMTP_PASS
-  }
-};
-
-// Create email transporter
-const transporter = nodemailer.createTransport(SMTP_CONFIG);
+*/
 
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'PostaMedia backend is running' });
 });
 
-// Email endpoint for sending OTP
-app.post('/api/send-email', async (req, res) => {
-  try {
-    const { email, otp, type = 'verification' } = req.body;
-
-    if (!email || !otp) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: email, otp'
-      });
-    }
-
-    console.log('Sending email:', { email, otp, type });
-    console.log('SMTP Config:', {
-      host: SMTP_CONFIG.host,
-      port: SMTP_CONFIG.port,
-      secure: SMTP_CONFIG.secure,
-      user: SMTP_CONFIG.auth.user
-    });
-
-    const expirationTime = new Date(Date.now() + 15 * 60 * 1000);
-    const formattedTime = expirationTime.toLocaleString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
-
-    let subject, html;
-
-    if (type === 'verification') {
-      subject = 'PostaMedia - Verification Code';
-      html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2 style="color: #10b981;">PostaMedia</h2>
-          <h3>Email Verification</h3>
-          <p>Your verification code is:</p>
-          <div style="background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
-            <span style="font-size: 32px; font-weight: bold; color: #10b981; letter-spacing: 5px;">${otp}</span>
-          </div>
-          <p>This code expires at <strong>${formattedTime}</strong>.</p>
-          <p>If you didn't request this code, please ignore this email.</p>
-          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-          <p style="color: #6b7280; font-size: 12px;">&copy; ${new Date().getFullYear()} PostaMedia. All rights reserved.</p>
-        </div>
-      `;
-    } else if (type === 'reset') {
-      subject = 'PostaMedia - Password Reset Code';
-      html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2 style="color: #10b981;">PostaMedia</h2>
-          <h3>Password Reset</h3>
-          <p>Your password reset code is:</p>
-          <div style="background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
-            <span style="font-size: 32px; font-weight: bold; color: #10b981; letter-spacing: 5px;">${otp}</span>
-          </div>
-          <p>This code expires at <strong>${formattedTime}</strong>.</p>
-          <p>If you didn't request this code, please ignore this email.</p>
-          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-          <p style="color: #6b7280; font-size: 12px;">&copy; ${new Date().getFullYear()} PostaMedia. All rights reserved.</p>
-        </div>
-      `;
-    }
-
-    const mailOptions = {
-      from: `"PostaMedia" <${process.env.SMTP_USER || 'noreply@postamedia.co.za'}>`,
-      to: email,
-      subject: subject,
-      html: html
-    };
-
-    await transporter.sendMail(mailOptions);
-
-    console.log('Email sent successfully to:', email);
-    res.json({
-      success: true,
-      message: 'Email sent successfully'
-    });
-  } catch (error) {
-    console.error('Email send error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to send email'
-    });
-  }
-});
-
-// Explicit OPTIONS handler for CORS preflight
-app.options('*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'https://postamedia.co.za');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.sendStatus(200);
-});
-
-// Payment endpoint
+// Payment endpoint - simplified for testing
 app.post('/api/payment', async (req, res) => {
   try {
-    const { amount, currency, userId, description, metadata = {} } = req.body;
+    const { amount, currency, userId, description, callbackUrl, metadata = {} } = req.body;
 
     // Validate required fields
     if (!amount || !currency || !userId) {
@@ -152,265 +49,410 @@ app.post('/api/payment', async (req, res) => {
       });
     }
 
-    console.log('Creating payment:', { amount, currency, userId });
-
-    // Create checkout with Yoco
-    const amountInCents = Math.round(amount * 100);
-    const yocoResponse = await axios.post(YOCO_API_URL, {
-      amount: amountInCents,
-      currency: currency,
-      success_url: 'https://postamedia.co.za/business/dashboard',
-      cancel_url: 'https://postamedia.co.za/business/dashboard',
-      metadata: {
-        userId,
-        ...metadata
-      }
-    }, {
-      headers: {
-        'Authorization': `Bearer ${YOCO_SECRET_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    const checkoutData = yocoResponse.data;
-    console.log('Yoco response:', checkoutData);
-
-    res.json({
-      success: true,
-      checkoutUrl: checkoutData.redirectUrl,
-      chargeId: checkoutData.id,
-      transactionId: checkoutData.id
-    });
+    // Mock response for testing without Firebase/Yoco
+    // In production, this would create a real Yoco checkout session with the callbackUrl
+    const chargeId = `test_charge_${Date.now()}`;
+    
+    // If callbackUrl is provided, use it to construct the redirect URL
+    if (callbackUrl) {
+      const successUrl = `${callbackUrl}?success=true&charge_id=${chargeId}&amount=${amount}`;
+      const cancelUrl = `${callbackUrl}?success=false&charge_id=${chargeId}&amount=${amount}`;
+      
+      res.json({
+        success: true,
+        checkoutUrl: successUrl, // For testing, directly redirect to callback with success
+        chargeId: chargeId,
+        transactionId: `test_transaction_${Date.now()}`
+      });
+    } else {
+      res.json({
+        success: true,
+        checkoutUrl: 'https://online.yoco.com/checkout/test',
+        chargeId: chargeId,
+        transactionId: `test_transaction_${Date.now()}`
+      });
+    }
   } catch (error) {
-    console.error('Payment error:', error.response?.data || error.message);
+    console.error('Error creating payment:', error.response?.data || error.message);
     res.status(500).json({ 
       success: false, 
-      error: error.response?.data?.message || 'Failed to create payment session' 
+      error: 'Failed to create payment session' 
     });
   }
 });
 
-// Withdrawal endpoint (simplified - records withdrawal request for manual processing)
+// Create checkout session - simplified for testing
+app.post('/api/create-checkout', async (req, res) => {
+  try {
+    const { amount, currency, description, userId, metadata = {} } = req.body;
+
+    // Validate required fields
+    if (!amount || !currency || !userId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: amount, currency, userId' 
+      });
+    }
+
+    // Mock response for testing without Firebase/Yoco
+    res.json({
+      success: true,
+      checkoutUrl: 'https://online.yoco.com/checkout/test',
+      chargeId: 'test_charge_id',
+      transactionId: 'test_transaction_id'
+    });
+  } catch (error) {
+    console.error('Error creating checkout:', error.response?.data || error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to create checkout session' 
+    });
+  }
+});
+
+// Check payment status
+app.get('/api/payment-status/:chargeId', async (req, res) => {
+  try {
+    const { chargeId } = req.params;
+
+    const yocoResponse = await axios.get(`${YOCO_API_URL}/${chargeId}`, {
+      headers: {
+        'Authorization': `Bearer ${YOCO_SECRET_KEY}`
+      }
+    });
+
+    const paymentData = yocoResponse.data;
+
+    res.json({
+      success: true,
+      status: paymentData.status,
+      amount: paymentData.amount_in_cents / 100,
+      currency: paymentData.currency
+    });
+  } catch (error) {
+    console.error('Error checking payment status:', error.response?.data || error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to check payment status' 
+    });
+  }
+});
+
+// Request withdrawal
 app.post('/api/withdraw', async (req, res) => {
   try {
     const { userId, amount, currency, bankDetails } = req.body;
 
     // Validate required fields
     if (!userId || !amount || !currency || !bankDetails) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: userId, amount, currency, bankDetails'
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: userId, amount, currency, bankDetails' 
       });
     }
 
     // Validate bank details
     if (!bankDetails.accountNumber || !bankDetails.bankName || !bankDetails.accountHolder) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required bank details: accountNumber, bankName, accountHolder'
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required bank details: accountNumber, bankName, accountHolder' 
       });
     }
 
-    console.log('Processing withdrawal request:', { userId, amount, currency, bankDetails });
+    // Check user's current balance
+    const userRef = db.collection('users').doc(userId);
+    const userDoc = await userRef.get();
 
-    // Note: Actual bank transfer will be processed manually
-    // This endpoint records the withdrawal request for manual processing
-    res.json({
-      success: true,
-      message: 'Withdrawal request submitted successfully. Funds will be transferred within 1-3 business days.',
-      withdrawalId: `WD-${Date.now()}`
+    if (!userDoc.exists) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+
+    const currentBalance = userDoc.data().walletBalance || 0;
+
+    if (currentBalance < amount) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Insufficient balance' 
+      });
+    }
+
+    // Deduct amount from wallet balance
+    await userRef.update({
+      walletBalance: currentBalance - amount,
+      lastWithdrawalAt: admin.firestore.FieldValue.serverTimestamp()
     });
+
+    // Create withdrawal record in Firestore
+    const withdrawalRef = await db.collection('withdrawals').add({
+      userId,
+      amount,
+      currency,
+      bankDetails: {
+        accountNumber: bankDetails.accountNumber,
+        bankName: bankDetails.bankName,
+        accountHolder: bankDetails.accountHolder,
+        accountType: bankDetails.accountType || 'checking',
+        branchCode: bankDetails.branchCode || ''
+      },
+      status: 'pending',
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Create wallet transaction record
+    await db.collection('walletTransactions').add({
+      userId,
+      type: 'withdrawal',
+      amount,
+      currency,
+      withdrawalId: withdrawalRef.id,
+      status: 'pending',
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Process payout with Yoco (if Yoco supports payouts)
+    try {
+      const yocoPayoutResponse = await axios.post(YOCO_PAYOUT_URL, {
+        amount_in_cents: Math.round(amount * 100),
+        currency: currency,
+        beneficiary: {
+          account_number: bankDetails.accountNumber,
+          bank_name: bankDetails.bankName,
+          account_holder_name: bankDetails.accountHolder,
+          account_type: bankDetails.accountType || 'checking',
+          branch_code: bankDetails.branchCode || ''
+        },
+        reference: withdrawalRef.id,
+        description: 'PostaMedia withdrawal'
+      }, {
+        headers: {
+          'Authorization': `Bearer ${YOCO_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // Update withdrawal with Yoco payout ID
+      await withdrawalRef.update({
+        yocoPayoutId: yocoPayoutResponse.data.id,
+        status: 'processing'
+      });
+
+      res.json({
+        success: true,
+        withdrawalId: withdrawalRef.id,
+        yocoPayoutId: yocoPayoutResponse.data.id,
+        status: 'processing',
+        message: 'Withdrawal request submitted successfully'
+      });
+    } catch (yocoError) {
+      // If Yoco payout fails, still record the withdrawal as pending for manual processing
+      console.error('Yoco payout error:', yocoError.response?.data || yocoError.message);
+      
+      await withdrawalRef.update({
+        status: 'pending_manual',
+        error: 'Yoco payout API not available, requires manual processing'
+      });
+
+      res.json({
+        success: true,
+        withdrawalId: withdrawalRef.id,
+        status: 'pending_manual',
+        message: 'Withdrawal request submitted. Manual processing required.'
+      });
+    }
   } catch (error) {
-    console.error('Withdrawal error:', error.message);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to process withdrawal request'
+    console.error('Error processing withdrawal:', error.response?.data || error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to process withdrawal' 
     });
   }
 });
 
-// OCR endpoint using Tesseract.js (server-side)
-app.post('/api/ocr', async (req, res) => {
+// Check withdrawal status
+app.get('/api/withdrawal-status/:withdrawalId', async (req, res) => {
   try {
-    const { imageUrl } = req.body;
+    const { withdrawalId } = req.params;
 
-    if (!imageUrl) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required field: imageUrl'
+    const withdrawalDoc = await db.collection('withdrawals').doc(withdrawalId).get();
+
+    if (!withdrawalDoc.exists) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Withdrawal not found' 
       });
     }
 
-    console.log('Processing OCR request with Tesseract.js');
+    const withdrawalData = withdrawalDoc.data();
 
-    // Convert base64 to buffer for Tesseract
-    let imageData;
-    if (imageUrl.startsWith('data:image/')) {
-      const base64Data = imageUrl.split(',')[1];
-      imageData = Buffer.from(base64Data, 'base64');
+    // If withdrawal has Yoco payout ID, check status with Yoco
+    if (withdrawalData.yocoPayoutId) {
+      try {
+        const yocoResponse = await axios.get(`${YOCO_PAYOUT_URL}/${withdrawalData.yocoPayoutId}`, {
+          headers: {
+            'Authorization': `Bearer ${YOCO_SECRET_KEY}`
+          }
+        });
+
+        const payoutData = yocoResponse.data;
+
+        // Update withdrawal status based on Yoco response
+        await withdrawalDoc.ref.update({
+          status: payoutData.status,
+          completedAt: payoutData.status === 'succeeded' ? admin.firestore.FieldValue.serverTimestamp() : null
+        });
+
+        res.json({
+          success: true,
+          status: payoutData.status,
+          amount: withdrawalData.amount,
+          currency: withdrawalData.currency
+        });
+      } catch (yocoError) {
+        console.error('Error checking Yoco payout status:', yocoError);
+        res.json({
+          success: true,
+          status: withdrawalData.status,
+          amount: withdrawalData.amount,
+          currency: withdrawalData.currency
+        });
+      }
     } else {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid image format'
+      res.json({
+        success: true,
+        status: withdrawalData.status,
+        amount: withdrawalData.amount,
+        currency: withdrawalData.currency
       });
     }
-
-    // Crop bottom 300px using sharp - WhatsApp view counts are at the bottom
-    const image = sharp(imageData);
-    const metadata = await image.metadata();
-    const cropHeight = Math.min(300, metadata.height);
-    const cropY = Math.max(0, metadata.height - cropHeight);
-    
-    // Ensure minimum dimensions for Tesseract
-    const minWidth = 100;
-    const finalWidth = Math.max(metadata.width, minWidth);
-    const finalHeight = Math.max(cropHeight, 50);
-    
-    const croppedImageData = await image
-      .extract({ left: 0, top: cropY, width: metadata.width, height: cropHeight })
-      .resize({ width: finalWidth * 4, height: finalHeight * 4, kernel: sharp.kernel.lanczos3 })
-      .grayscale()
-      .normalize()
-      .toBuffer();
-
-    // Create Tesseract worker
-    const worker = await createWorker('eng', 1, {
-      logger: () => {},
-    });
-
-    // Configure Tesseract for better small text recognition
-    await worker.setParameters({
-      tessedit_char_whitelist: '0123456789 Views●○',
-      tessedit_pageseg_mode: '6',
-      preserve_interword_spaces: '1',
-    });
-
-    // Perform OCR on cropped image
-    const { data } = await worker.recognize(croppedImageData);
-    await worker.terminate();
-
-    const text = data.text;
-    console.log('OCR extracted text:', text);
-
-    // Reconstruct scattered text
-    const ocrLines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-    const reconstructedText = ocrLines.join(' ');
-    const cleanedText = reconstructedText.replace(/\s+/g, ' ').trim();
-    console.log('Cleaned text:', cleanedText);
-
-    // Extract all numbers
-    const allNumbers = cleanedText.match(/\d{1,5}/g) || [];
-    console.log('All numbers found:', allNumbers);
-
-    // Rule: Views will always be the last number in the array
-    if (allNumbers.length > 0) {
-      const lastNumber = parseInt(allNumbers[allNumbers.length - 1]);
-      if (lastNumber > 0 && lastNumber <= 10000) {
-        console.log('Using last number as view count:', lastNumber);
-        return res.json({
-          success: true,
-          viewCount: lastNumber,
-          extractedText: cleanedText
-        });
-      }
-    }
-
-    // Check if "views" or similar keywords are present
-    const hasViewsKeyword = /views?|iews?/i.test(cleanedText);
-
-    if (hasViewsKeyword && allNumbers.length > 0) {
-      const words = cleanedText.split(' ');
-      let viewCount = null;
-      let lastViewIndex = -1;
-      
-      for (let i = words.length - 1; i >= 0; i--) {
-        const word = words[i].toLowerCase();
-        if (word.includes('view') || word.includes('iew')) {
-          lastViewIndex = i;
-          break;
-        }
-      }
-      
-      if (lastViewIndex !== -1) {
-        if (lastViewIndex > 0 && /\d{1,5}/.test(words[lastViewIndex - 1])) {
-          viewCount = parseInt(words[lastViewIndex - 1].match(/\d{1,5}/)[0]);
-        } else if (lastViewIndex < words.length - 1 && /\d{1,5}/.test(words[lastViewIndex + 1])) {
-          viewCount = parseInt(words[lastViewIndex + 1].match(/\d{1,5}/)[0]);
-        } else if (/\d{1,5}/.test(words[lastViewIndex])) {
-          viewCount = parseInt(words[lastViewIndex].match(/\d{1,5}/)[0]);
-        }
-      }
-      
-      if (viewCount && viewCount > 0 && viewCount <= 10000) {
-        console.log('Found view count near last keyword:', viewCount);
-        return res.json({
-          success: true,
-          viewCount: viewCount,
-          extractedText: cleanedText
-        });
-      }
-    }
-
-    // Fallback patterns
-    const patterns = [
-      /(\d{1,5})\s*iews?/i,
-      /(\d{1,5})\s*iew\s+s/i,
-      /[\u25CF●●\s]*(\d{1,5})[\s\n]*views?/i,
-      /(\d{1,5})\s*views?/i,
-      /views?\s*[:\-]?\s*(\d{1,5})/i,
-      /(\d{1,5})\s*\n?\s*views?/i,
-      /v1ews?\s*(\d{1,5})/i,
-      /vlews?\s*(\d{1,5})/i,
-      /view\s*(\d{1,5})/i,
-    ];
-
-    for (const p of patterns) {
-      const m = cleanedText.match(p);
-      if (m) {
-        const n = parseInt(m[1]);
-        if (n > 0 && n <= 10000) {
-          console.log('Matched pattern:', p, 'Result:', n);
-          return res.json({
-            success: true,
-            viewCount: n,
-            extractedText: cleanedText
-          });
-        }
-      }
-    }
-
-    // Last resort: largest reasonable number
-    if (hasViewsKeyword && allNumbers.length > 0) {
-      const reasonableNumbers = allNumbers
-        .map(n => parseInt(n))
-        .filter(n => n > 0 && n <= 10000 && n > 5);
-      
-      if (reasonableNumbers.length > 0) {
-        const maxNumber = Math.max(...reasonableNumbers);
-        console.log('Using fallback - largest reasonable number:', maxNumber);
-        return res.json({
-          success: true,
-          viewCount: maxNumber,
-          extractedText: cleanedText
-        });
-      }
-    }
-
-    res.json({
-      success: false,
-      viewCount: null,
-      extractedText: cleanedText,
-      error: 'Could not extract view count'
-    });
   } catch (error) {
-    console.error('Tesseract OCR error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to process OCR'
+    console.error('Error checking withdrawal status:', error.response?.data || error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to check withdrawal status' 
     });
   }
 });
 
+// Yoco webhook handler
+app.post('/api/webhook/yoco', async (req, res) => {
+  try {
+    const event = req.body;
+
+    // Verify webhook signature (recommended in production)
+    // For now, we'll process all webhooks
+
+    switch (event.type) {
+      case 'payment.succeeded':
+        await handlePaymentSucceeded(event.data);
+        break;
+      case 'payment.failed':
+        await handlePaymentFailed(event.data);
+        break;
+      default:
+        console.log('Unhandled webhook event:', event.type);
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Error processing webhook:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// Handle successful payment
+async function handlePaymentSucceeded(paymentData) {
+  try {
+    const { id: chargeId, amount_in_cents, currency, metadata } = paymentData;
+    const { userId } = metadata || {};
+
+    if (!userId) {
+      console.error('No userId in payment metadata');
+      return;
+    }
+
+    // Update transaction status in Firestore
+    const transactionsQuery = await db.collection('transactions')
+      .where('yocoChargeId', '==', chargeId)
+      .limit(1)
+      .get();
+
+    if (!transactionsQuery.empty) {
+      const transactionDoc = transactionsQuery.docs[0];
+      await transactionDoc.ref.update({
+        status: 'succeeded',
+        completedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    // Update user wallet balance
+    const userRef = db.collection('users').doc(userId);
+    const userDoc = await userRef.get();
+
+    if (userDoc.exists) {
+      const currentBalance = userDoc.data().walletBalance || 0;
+      const amount = amount_in_cents / 100;
+
+      await userRef.update({
+        walletBalance: currentBalance + amount,
+        totalDeposits: (userDoc.data().totalDeposits || 0) + amount,
+        lastDepositAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Add to wallet transactions
+      await db.collection('walletTransactions').add({
+        userId,
+        type: 'deposit',
+        amount,
+        currency,
+        chargeId,
+        status: 'completed',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+  } catch (error) {
+    console.error('Error handling payment succeeded:', error);
+  }
+}
+
+// Handle failed payment
+async function handlePaymentFailed(paymentData) {
+  try {
+    const { id: chargeId } = paymentData;
+
+    // Update transaction status in Firestore
+    const transactionsQuery = await db.collection('transactions')
+      .where('yocoChargeId', '==', chargeId)
+      .limit(1)
+      .get();
+
+    if (!transactionsQuery.empty) {
+      const transactionDoc = transactionsQuery.docs[0];
+      await transactionDoc.ref.update({
+        status: 'failed',
+        failedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+  } catch (error) {
+    console.error('Error handling payment failed:', error);
+  }
+}
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
+
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`PostaMedia backend server running on port ${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
 });
