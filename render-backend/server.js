@@ -14,8 +14,7 @@ app.use(cors({
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Firebase Admin SDK initialization - commented out for testing
-/*
+// Firebase Admin SDK initialization
 const admin = require('firebase-admin');
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
@@ -29,14 +28,14 @@ const db = admin.firestore();
 const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY;
 const YOCO_API_URL = 'https://online.yoco.com/v1/charges';
 const YOCO_PAYOUT_URL = 'https://online.yoco.com/v1/payouts';
-*/
+const YOCO_CHECKOUT_URL = 'https://online.yoco.com/v1/checkout';
 
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'PostaMedia backend is running' });
 });
 
-// Payment endpoint - simplified for testing
+// Payment endpoint - Yoco checkout integration
 app.post('/api/payment', async (req, res) => {
   try {
     const { amount, currency, userId, description, callbackUrl, metadata = {} } = req.body;
@@ -49,34 +48,69 @@ app.post('/api/payment', async (req, res) => {
       });
     }
 
-    // Mock response for testing without Firebase/Yoco
-    // In production, this would create a real Yoco checkout session with the callbackUrl
-    const chargeId = `test_charge_${Date.now()}`;
-    
-    // If callbackUrl is provided, use it to construct the redirect URL
-    if (callbackUrl) {
-      const successUrl = `${callbackUrl}?success=true&charge_id=${chargeId}&amount=${amount}`;
-      const cancelUrl = `${callbackUrl}?success=false&charge_id=${chargeId}&amount=${amount}`;
+    // Check if YOCO_SECRET_KEY is configured
+    if (!YOCO_SECRET_KEY || YOCO_SECRET_KEY === 'your_yoco_secret_key_here') {
+      // Fallback to mock response if Yoco is not configured
+      console.warn('YOCO_SECRET_KEY not configured, using mock response');
+      const chargeId = `test_charge_${Date.now()}`;
       
-      res.json({
-        success: true,
-        checkoutUrl: successUrl, // For testing, directly redirect to callback with success
-        chargeId: chargeId,
-        transactionId: `test_transaction_${Date.now()}`
-      });
-    } else {
-      res.json({
-        success: true,
-        checkoutUrl: 'https://online.yoco.com/checkout/test',
-        chargeId: chargeId,
-        transactionId: `test_transaction_${Date.now()}`
-      });
+      if (callbackUrl) {
+        const successUrl = `${callbackUrl}?success=true&charge_id=${chargeId}&amount=${amount}`;
+        res.json({
+          success: true,
+          checkoutUrl: successUrl,
+          chargeId: chargeId,
+          transactionId: `test_transaction_${Date.now()}`
+        });
+      } else {
+        res.json({
+          success: true,
+          checkoutUrl: 'https://online.yoco.com/checkout/test',
+          chargeId: chargeId,
+          transactionId: `test_transaction_${Date.now()}`
+        });
+      }
+      return;
     }
+
+    // Create Yoco checkout session
+    console.log('Creating Yoco checkout session with callback:', callbackUrl);
+    
+    const yocoResponse = await axios.post(
+      `${YOCO_CHECKOUT_URL}`,
+      {
+        amount_in_cents: Math.round(amount * 100),
+        currency: currency,
+        description: description || 'PostaMedia wallet deposit',
+        metadata: {
+          userId: userId,
+          ...metadata
+        },
+        success_url: callbackUrl ? `${callbackUrl}?success=true` : undefined,
+        cancel_url: callbackUrl ? `${callbackUrl}?success=false` : undefined
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${YOCO_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const checkoutData = yocoResponse.data;
+    console.log('Yoco checkout created:', checkoutData);
+
+    res.json({
+      success: true,
+      checkoutUrl: checkoutData.redirect_url || checkoutData.url,
+      chargeId: checkoutData.id,
+      transactionId: checkoutData.id
+    });
   } catch (error) {
-    console.error('Error creating payment:', error.response?.data || error.message);
+    console.error('Error creating Yoco checkout:', error.response?.data || error.message);
     res.status(500).json({ 
       success: false, 
-      error: 'Failed to create payment session' 
+      error: error.response?.data?.message || 'Failed to create payment session' 
     });
   }
 });
@@ -135,6 +169,63 @@ app.get('/api/payment-status/:chargeId', async (req, res) => {
       success: false, 
       error: 'Failed to check payment status' 
     });
+  }
+});
+
+// Yoco webhook endpoint - handles payment success/failure callbacks
+app.post('/api/webhook/yoco', async (req, res) => {
+  try {
+    const webhookData = req.body;
+    console.log('Yoco webhook received:', webhookData);
+
+    // Verify webhook signature in production
+    // const signature = req.headers['x-yoco-webhook-signature'];
+    
+    const eventType = webhookData.type || webhookData.event;
+    const chargeData = webhookData.data || webhookData;
+
+    if (eventType === 'payment.succeeded' || webhookData.status === 'succeeded') {
+      const chargeId = chargeData.id || chargeData.charge_id;
+      const amountInCents = chargeData.amount_in_cents || chargeData.amount;
+      const userId = chargeData.metadata?.userId;
+
+      if (chargeId && amountInCents && userId) {
+        const amount = amountInCents / 100;
+        
+        // Update user wallet balance in Firestore
+        await db.runTransaction(async (tx) => {
+          const userRef = db.collection('users').doc(userId);
+          const userDoc = await tx.get(userRef);
+          
+          if (!userDoc.exists()) {
+            throw new Error('User not found');
+          }
+
+          tx.update(userRef, {
+            walletBalance: admin.firestore.FieldValue.increment(amount)
+          });
+
+          // Create transaction record
+          const txRef = db.collection('walletTransactions').doc();
+          tx.set(txRef, {
+            userId,
+            type: 'deposit',
+            amount,
+            yocoToken: chargeId,
+            reference: `Yoco payment ${chargeId}`,
+            status: 'completed',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        });
+
+        console.log(`Successfully added R${amount} to user ${userId} wallet`);
+      }
+    }
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error processing Yoco webhook:', error);
+    res.status(500).json({ success: false, error: 'Webhook processing failed' });
   }
 });
 
