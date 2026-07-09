@@ -51,8 +51,9 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
 
 const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY || 'pk_live_fc56e3abP46bKek65b44';
 const YOCO_API_URL = 'https://online.yoco.com/v1/charges';
-const YOCO_PAYOUT_URL = 'https://online.yoco.com/v1/payouts';
 const YOCO_CHECKOUT_URL = 'https://payments.yoco.com/api/checkouts';
+const YOCO_CHECKOUT_STATUS_URL = 'https://payments.yoco.com/api/checkouts';
+const YOCO_PAYOUT_URL = 'https://online.yoco.com/v1/payouts';
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -225,6 +226,7 @@ app.post('/api/create-checkout', async (req, res) => {
 app.get('/api/payment-status/:chargeId', async (req, res) => {
   try {
     const { chargeId } = req.params;
+    console.log('Checking payment status for:', chargeId);
 
     if (!YOCO_SECRET_KEY || YOCO_SECRET_KEY === 'your_yoco_secret_key_here') {
       // Mock response for testing
@@ -236,7 +238,8 @@ app.get('/api/payment-status/:chargeId', async (req, res) => {
       });
     }
 
-    const yocoResponse = await axios.get(`${YOCO_API_URL}/${chargeId}`, {
+    // Use Yoco checkout API for checkout sessions
+    const yocoResponse = await axios.get(`${YOCO_CHECKOUT_STATUS_URL}/${chargeId}`, {
       headers: {
         'Authorization': `Bearer ${YOCO_SECRET_KEY}`
       }
@@ -245,13 +248,13 @@ app.get('/api/payment-status/:chargeId', async (req, res) => {
     const paymentData = yocoResponse.data;
     console.log('Payment status response:', paymentData);
     console.log('Payment status:', paymentData.status);
-    console.log('Payment amount:', paymentData.amount_in_cents / 100);
+    console.log('Payment amount:', paymentData.amount / 100);
     console.log('Payment currency:', paymentData.currency);
 
     res.json({
       success: true,
       status: paymentData.status,
-      amount: paymentData.amount_in_cents / 100,
+      amount: paymentData.amount / 100,
       currency: paymentData.currency
     });
   } catch (error) {
