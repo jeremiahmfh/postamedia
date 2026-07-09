@@ -317,6 +317,15 @@ app.post('/api/webhook/yoco', async (req, res) => {
   }
 });
 
+// Webhook test endpoint (GET)
+app.get('/api/webhook/yoco', (req, res) => {
+  res.json({ 
+    message: 'Webhook endpoint is active. Use POST for actual webhooks.',
+    method: 'POST',
+    contentType: 'application/json'
+  });
+});
+
 // Request withdrawal
 app.post('/api/withdraw', async (req, res) => {
   try {
