@@ -100,7 +100,7 @@ app.post('/api/payment', async (req, res) => {
           userId: userId,
           ...metadata
         },
-        success_url: callbackUrl ? `${callbackUrl}?success=true` : undefined,
+        success_url: callbackUrl ? `${callbackUrl}?success=true&amount=${amount}&charge_id=${userId}` : undefined,
         cancel_url: callbackUrl ? `${callbackUrl}?success=false` : undefined
       },
       {
