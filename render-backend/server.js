@@ -17,22 +17,21 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Firebase Admin SDK initialization
 let db = null;
-let firebaseAdmin = null;
+const admin = require('firebase-admin');
 
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
-    firebaseAdmin = require('firebase-admin');
     console.log('Firebase admin module loaded');
     
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     console.log('Service account parsed, project_id:', serviceAccount.project_id);
 
-    firebaseAdmin.initializeApp({
-      credential: firebaseAdmin.credential.cert(serviceAccount)
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
     });
     console.log('Firebase app initialized');
 
-    db = firebaseAdmin.firestore();
+    db = admin.firestore();
     console.log('Firestore initialized successfully');
   } catch (error) {
     console.error('Firebase initialization error:', error);
@@ -59,21 +58,21 @@ app.get('/test-firebase', async (req, res) => {
   try {
     console.log('Testing Firebase connection...');
     console.log('Firebase db initialized:', !!db);
-    console.log('Firebase admin initialized:', !!firebaseAdmin);
+    console.log('Firebase admin initialized:', !!admin);
     
     if (!db) {
       return res.json({ 
         success: false, 
         error: 'Firebase not initialized',
         firebaseInitialized: !!db,
-        adminInitialized: !!firebaseAdmin
+        adminInitialized: !!admin
       });
     }
 
     // Test write operation
     const testRef = db.collection('test').doc('connection-test');
     await testRef.set({ 
-      timestamp: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
       test: 'firebase-connection-test'
     });
     console.log('Firebase write successful');
@@ -86,7 +85,7 @@ app.get('/test-firebase', async (req, res) => {
       success: true, 
       message: 'Firebase connection working',
       firebaseInitialized: !!db,
-      adminInitialized: !!firebaseAdmin,
+      adminInitialized: !!admin,
       data: doc.data() 
     });
   } catch (error) {
@@ -95,7 +94,7 @@ app.get('/test-firebase', async (req, res) => {
       success: false, 
       error: error.message,
       firebaseInitialized: !!db,
-      adminInitialized: !!firebaseAdmin
+      adminInitialized: !!admin
     });
   }
 });
@@ -278,7 +277,7 @@ app.post('/api/webhook/yoco', async (req, res) => {
           }
 
           tx.update(userRef, {
-            walletBalance: firebaseAdmin.firestore.FieldValue.increment(amount)
+            walletBalance: admin.firestore.FieldValue.increment(amount)
           });
 
           // Create transaction record
@@ -290,7 +289,7 @@ app.post('/api/webhook/yoco', async (req, res) => {
             yocoToken: chargeId,
             reference: `Yoco payment ${chargeId}`,
             status: 'completed',
-            createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
           });
         });
 
@@ -349,7 +348,7 @@ app.post('/api/withdraw', async (req, res) => {
     // Deduct amount from wallet balance
     await userRef.update({
       walletBalance: currentBalance - amount,
-      lastWithdrawalAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+      lastWithdrawalAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     // Create withdrawal record in Firestore
@@ -365,7 +364,7 @@ app.post('/api/withdraw', async (req, res) => {
         branchCode: bankDetails.branchCode || ''
       },
       status: 'pending',
-      createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     // Create wallet transaction record
@@ -376,7 +375,7 @@ app.post('/api/withdraw', async (req, res) => {
       currency,
       withdrawalId: withdrawalRef.id,
       status: 'pending',
-      createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     // Process payout with Yoco (if Yoco supports payouts)
@@ -468,7 +467,7 @@ app.get('/api/withdrawal-status/:withdrawalId', async (req, res) => {
         // Update withdrawal status based on Yoco response
         await withdrawalDoc.ref.update({
           status: payoutData.status,
-          completedAt: payoutData.status === 'succeeded' ? firebaseAdmin.firestore.FieldValue.serverTimestamp() : null
+          completedAt: payoutData.status === 'succeeded' ? admin.firestore.FieldValue.serverTimestamp() : null
         });
 
         res.json({
@@ -550,7 +549,7 @@ async function handlePaymentSucceeded(paymentData) {
       const transactionDoc = transactionsQuery.docs[0];
       await transactionDoc.ref.update({
         status: 'succeeded',
-        completedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+        completedAt: admin.firestore.FieldValue.serverTimestamp()
       });
     }
 
@@ -565,7 +564,7 @@ async function handlePaymentSucceeded(paymentData) {
       await userRef.update({
         walletBalance: currentBalance + amount,
         totalDeposits: (userDoc.data().totalDeposits || 0) + amount,
-        lastDepositAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+        lastDepositAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
       // Add to wallet transactions
@@ -576,7 +575,7 @@ async function handlePaymentSucceeded(paymentData) {
         currency,
         chargeId,
         status: 'completed',
-        createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
     }
   } catch (error) {
@@ -599,7 +598,7 @@ async function handlePaymentFailed(paymentData) {
       const transactionDoc = transactionsQuery.docs[0];
       await transactionDoc.ref.update({
         status: 'failed',
-        failedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+        failedAt: admin.firestore.FieldValue.serverTimestamp()
       });
     }
   } catch (error) {
