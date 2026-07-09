@@ -244,6 +244,9 @@ app.get('/api/payment-status/:chargeId', async (req, res) => {
 
     const paymentData = yocoResponse.data;
     console.log('Payment status response:', paymentData);
+    console.log('Payment status:', paymentData.status);
+    console.log('Payment amount:', paymentData.amount_in_cents / 100);
+    console.log('Payment currency:', paymentData.currency);
 
     res.json({
       success: true,
