@@ -93,7 +93,7 @@ app.post('/api/payment', async (req, res) => {
     const yocoResponse = await axios.post(
       `${YOCO_CHECKOUT_URL}`,
       {
-        amount_in_cents: Math.round(amount * 100),
+        amount: Math.round(amount * 100),
         currency: currency,
         description: description || 'PostaMedia wallet deposit',
         metadata: {
