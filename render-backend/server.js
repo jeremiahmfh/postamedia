@@ -116,7 +116,7 @@ app.post('/api/payment', async (req, res) => {
 
     res.json({
       success: true,
-      checkoutUrl: checkoutData.redirect_url || checkoutData.url,
+      checkoutUrl: checkoutData.redirectUrl || checkoutData.redirect_url || checkoutData.url,
       chargeId: checkoutData.id,
       transactionId: checkoutData.id
     });
