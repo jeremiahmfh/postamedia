@@ -515,32 +515,6 @@ app.get('/api/withdrawal-status/:withdrawalId', async (req, res) => {
   }
 });
 
-// Yoco webhook handler
-app.post('/api/webhook/yoco', async (req, res) => {
-  try {
-    const event = req.body;
-
-    // Verify webhook signature (recommended in production)
-    // For now, we'll process all webhooks
-
-    switch (event.type) {
-      case 'payment.succeeded':
-        await handlePaymentSucceeded(event.data);
-        break;
-      case 'payment.failed':
-        await handlePaymentFailed(event.data);
-        break;
-      default:
-        console.log('Unhandled webhook event:', event.type);
-    }
-
-    res.json({ received: true });
-  } catch (error) {
-    console.error('Error processing webhook:', error);
-    res.status(500).json({ error: 'Webhook processing failed' });
-  }
-});
-
 // Handle successful payment
 async function handlePaymentSucceeded(paymentData) {
   try {
