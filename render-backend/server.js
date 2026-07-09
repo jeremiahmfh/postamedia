@@ -59,21 +59,21 @@ app.get('/test-firebase', async (req, res) => {
   try {
     console.log('Testing Firebase connection...');
     console.log('Firebase db initialized:', !!db);
-    console.log('Firebase admin initialized:', !!admin);
+    console.log('Firebase admin initialized:', !!firebaseAdmin);
     
     if (!db) {
       return res.json({ 
         success: false, 
         error: 'Firebase not initialized',
         firebaseInitialized: !!db,
-        adminInitialized: !!admin
+        adminInitialized: !!firebaseAdmin
       });
     }
 
     // Test write operation
     const testRef = db.collection('test').doc('connection-test');
     await testRef.set({ 
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
       test: 'firebase-connection-test'
     });
     console.log('Firebase write successful');
@@ -86,7 +86,7 @@ app.get('/test-firebase', async (req, res) => {
       success: true, 
       message: 'Firebase connection working',
       firebaseInitialized: !!db,
-      adminInitialized: !!admin,
+      adminInitialized: !!firebaseAdmin,
       data: doc.data() 
     });
   } catch (error) {
@@ -95,7 +95,7 @@ app.get('/test-firebase', async (req, res) => {
       success: false, 
       error: error.message,
       firebaseInitialized: !!db,
-      adminInitialized: !!admin
+      adminInitialized: !!firebaseAdmin
     });
   }
 });
