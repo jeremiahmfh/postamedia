@@ -158,10 +158,20 @@ app.post('/api/create-checkout', async (req, res) => {
   }
 });
 
-// Check payment status
+// Check payment status by charge ID
 app.get('/api/payment-status/:chargeId', async (req, res) => {
   try {
     const { chargeId } = req.params;
+
+    if (!YOCO_SECRET_KEY || YOCO_SECRET_KEY === 'your_yoco_secret_key_here') {
+      // Mock response for testing
+      return res.json({
+        success: true,
+        status: 'succeeded',
+        amount: 10,
+        currency: 'ZAR'
+      });
+    }
 
     const yocoResponse = await axios.get(`${YOCO_API_URL}/${chargeId}`, {
       headers: {
@@ -170,6 +180,7 @@ app.get('/api/payment-status/:chargeId', async (req, res) => {
     });
 
     const paymentData = yocoResponse.data;
+    console.log('Payment status response:', paymentData);
 
     res.json({
       success: true,
