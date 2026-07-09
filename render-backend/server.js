@@ -42,7 +42,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
 const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY;
 const YOCO_API_URL = 'https://online.yoco.com/v1/charges';
 const YOCO_PAYOUT_URL = 'https://online.yoco.com/v1/payouts';
-const YOCO_CHECKOUT_URL = 'https://online.yoco.com/v1/checkout';
+const YOCO_CHECKOUT_URL = 'https://payments.yoco.com/api/checkouts';
 
 // Health check endpoint
 app.get('/health', (req, res) => {
