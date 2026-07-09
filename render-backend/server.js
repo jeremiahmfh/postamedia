@@ -15,15 +15,28 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Firebase Admin SDK initialization
-const admin = require('firebase-admin');
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+let db = null;
+let admin = null;
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: process.env.FIREBASE_DATABASE_URL
-});
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  try {
+    admin = require('firebase-admin');
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
-const db = admin.firestore();
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: process.env.FIREBASE_DATABASE_URL
+    });
+
+    db = admin.firestore();
+    console.log('Firebase initialized successfully');
+  } catch (error) {
+    console.error('Firebase initialization error:', error.message);
+    console.log('Running without Firebase (mock mode)');
+  }
+} else {
+  console.log('FIREBASE_SERVICE_ACCOUNT not set, running without Firebase (mock mode)');
+}
 
 const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY;
 const YOCO_API_URL = 'https://online.yoco.com/v1/charges';
