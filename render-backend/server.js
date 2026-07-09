@@ -22,39 +22,21 @@ let admin = null;
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
     const firebaseAdmin = require('firebase-admin');
+    const { getFirestore } = require('firebase-admin/firestore');
     console.log('Firebase admin module loaded');
-    console.log('Firebase admin exports:', Object.keys(firebaseAdmin));
     
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     console.log('Service account parsed, project_id:', serviceAccount.project_id);
 
-    // Try different initialization approaches for different firebase-admin versions
-    try {
-      if (firebaseAdmin.credential && firebaseAdmin.credential.cert) {
-        firebaseAdmin.initializeApp({
-          credential: firebaseAdmin.credential.cert(serviceAccount)
-        });
-      } else if (firebaseAdmin.cert) {
-        firebaseAdmin.initializeApp({
-          credential: firebaseAdmin.cert(serviceAccount)
-        });
-      } else {
-        throw new Error('Firebase credential method not found');
-      }
-      console.log('Firebase app initialized');
-      admin = firebaseAdmin;
-      db = admin.firestore();
-      console.log('Firestore initialized successfully');
-    } catch (initError) {
-      console.error('Firebase app initialization error:', initError);
-      // Try using service account directly without credential method
-      firebaseAdmin.initializeApp({
-        credential: firebaseAdmin.credential.cert(serviceAccount)
-      });
-      admin = firebaseAdmin;
-      db = admin.firestore();
-      console.log('Firestore initialized with fallback method');
-    }
+    // Initialize Firebase app using cert method directly
+    firebaseAdmin.initializeApp({
+      credential: firebaseAdmin.cert(serviceAccount)
+    });
+    console.log('Firebase app initialized');
+    
+    admin = firebaseAdmin;
+    db = getFirestore();
+    console.log('Firestore initialized successfully');
   } catch (error) {
     console.error('Firebase initialization error:', error);
     console.error('Error message:', error.message);
