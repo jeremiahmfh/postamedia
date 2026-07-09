@@ -46,7 +46,53 @@ const YOCO_CHECKOUT_URL = 'https://payments.yoco.com/api/checkouts';
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'PostaMedia backend is running' });
+  res.json({ status: 'ok', message: 'PostaMedia backend is running', firebaseInitialized: !!db });
+});
+
+// Test Firebase connection
+app.get('/test-firebase', async (req, res) => {
+  try {
+    console.log('Testing Firebase connection...');
+    console.log('Firebase db initialized:', !!db);
+    console.log('Firebase admin initialized:', !!admin);
+    
+    if (!db) {
+      return res.json({ 
+        success: false, 
+        error: 'Firebase not initialized',
+        firebaseInitialized: !!db,
+        adminInitialized: !!admin
+      });
+    }
+
+    // Test write operation
+    const testRef = db.collection('test').doc('connection-test');
+    await testRef.set({ 
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      test: 'firebase-connection-test'
+    });
+    console.log('Firebase write successful');
+    
+    // Test read operation
+    const doc = await testRef.get();
+    console.log('Firebase read successful:', doc.exists);
+    
+    return res.json({ 
+      success: true, 
+      message: 'Firebase connection working',
+      firebaseInitialized: !!db,
+      adminInitialized: !!admin,
+      data: doc.data() 
+    });
+  } catch (error) {
+    console.error('Firebase test error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      firebaseInitialized: !!db,
+      adminInitialized: !!admin
+    });
+  }
 });
 
 // Payment endpoint - Yoco checkout integration
