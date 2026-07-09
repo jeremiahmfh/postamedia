@@ -173,12 +173,15 @@ app.post('/api/payment', async (req, res) => {
 
     const checkoutData = yocoResponse.data;
     console.log('Yoco checkout created:', checkoutData);
+    console.log('Checkout data keys:', Object.keys(checkoutData));
+    console.log('Checkout ID:', checkoutData.id);
+    console.log('Checkout redirectUrl:', checkoutData.redirectUrl || checkoutData.redirect_url || checkoutData.url);
 
     res.json({
       success: true,
       checkoutUrl: checkoutData.redirectUrl || checkoutData.redirect_url || checkoutData.url,
-      chargeId: checkoutData.id,
-      transactionId: checkoutData.id
+      chargeId: checkoutData.id || checkoutData.charge_id,
+      transactionId: checkoutData.id || checkoutData.charge_id
     });
   } catch (error) {
     console.error('Error creating Yoco checkout:', error.response?.data || error.message);
