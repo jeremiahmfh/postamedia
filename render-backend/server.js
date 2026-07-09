@@ -22,16 +22,22 @@ let admin = null;
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
     admin = require('firebase-admin');
+    console.log('Firebase admin module loaded');
+    
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    console.log('Service account parsed, project_id:', serviceAccount.project_id);
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
+    console.log('Firebase app initialized');
 
     db = admin.firestore();
-    console.log('Firebase initialized successfully');
+    console.log('Firestore initialized successfully');
   } catch (error) {
-    console.error('Firebase initialization error:', error.message);
+    console.error('Firebase initialization error:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
     console.log('Running without Firebase (mock mode)');
   }
 } else {
