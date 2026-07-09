@@ -17,22 +17,22 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Firebase Admin SDK initialization
 let db = null;
-let admin = null;
+let firebaseAdmin = null;
 
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
-    admin = require('firebase-admin');
+    firebaseAdmin = require('firebase-admin');
     console.log('Firebase admin module loaded');
     
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     console.log('Service account parsed, project_id:', serviceAccount.project_id);
 
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
+    firebaseAdmin.initializeApp({
+      credential: firebaseAdmin.credential.cert(serviceAccount)
     });
     console.log('Firebase app initialized');
 
-    db = admin.firestore();
+    db = firebaseAdmin.firestore();
     console.log('Firestore initialized successfully');
   } catch (error) {
     console.error('Firebase initialization error:', error);
@@ -278,7 +278,7 @@ app.post('/api/webhook/yoco', async (req, res) => {
           }
 
           tx.update(userRef, {
-            walletBalance: admin.firestore.FieldValue.increment(amount)
+            walletBalance: firebaseAdmin.firestore.FieldValue.increment(amount)
           });
 
           // Create transaction record
@@ -290,7 +290,7 @@ app.post('/api/webhook/yoco', async (req, res) => {
             yocoToken: chargeId,
             reference: `Yoco payment ${chargeId}`,
             status: 'completed',
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
           });
         });
 
@@ -349,7 +349,7 @@ app.post('/api/withdraw', async (req, res) => {
     // Deduct amount from wallet balance
     await userRef.update({
       walletBalance: currentBalance - amount,
-      lastWithdrawalAt: admin.firestore.FieldValue.serverTimestamp()
+      lastWithdrawalAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
     });
 
     // Create withdrawal record in Firestore
@@ -365,7 +365,7 @@ app.post('/api/withdraw', async (req, res) => {
         branchCode: bankDetails.branchCode || ''
       },
       status: 'pending',
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
     });
 
     // Create wallet transaction record
@@ -376,7 +376,7 @@ app.post('/api/withdraw', async (req, res) => {
       currency,
       withdrawalId: withdrawalRef.id,
       status: 'pending',
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
     });
 
     // Process payout with Yoco (if Yoco supports payouts)
@@ -468,7 +468,7 @@ app.get('/api/withdrawal-status/:withdrawalId', async (req, res) => {
         // Update withdrawal status based on Yoco response
         await withdrawalDoc.ref.update({
           status: payoutData.status,
-          completedAt: payoutData.status === 'succeeded' ? admin.firestore.FieldValue.serverTimestamp() : null
+          completedAt: payoutData.status === 'succeeded' ? firebaseAdmin.firestore.FieldValue.serverTimestamp() : null
         });
 
         res.json({
@@ -550,7 +550,7 @@ async function handlePaymentSucceeded(paymentData) {
       const transactionDoc = transactionsQuery.docs[0];
       await transactionDoc.ref.update({
         status: 'succeeded',
-        completedAt: admin.firestore.FieldValue.serverTimestamp()
+        completedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
       });
     }
 
@@ -565,7 +565,7 @@ async function handlePaymentSucceeded(paymentData) {
       await userRef.update({
         walletBalance: currentBalance + amount,
         totalDeposits: (userDoc.data().totalDeposits || 0) + amount,
-        lastDepositAt: admin.firestore.FieldValue.serverTimestamp()
+        lastDepositAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
       });
 
       // Add to wallet transactions
@@ -576,7 +576,7 @@ async function handlePaymentSucceeded(paymentData) {
         currency,
         chargeId,
         status: 'completed',
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
       });
     }
   } catch (error) {
@@ -599,7 +599,7 @@ async function handlePaymentFailed(paymentData) {
       const transactionDoc = transactionsQuery.docs[0];
       await transactionDoc.ref.update({
         status: 'failed',
-        failedAt: admin.firestore.FieldValue.serverTimestamp()
+        failedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
       });
     }
   } catch (error) {
