@@ -49,7 +49,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   console.log('FIREBASE_SERVICE_ACCOUNT not set, running without Firebase (mock mode)');
 }
 
-const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY || 'pk_test_a7105f17P46bKek56584';
+const YOCO_SECRET_KEY = process.env.YOCO_SECRET_KEY || 'pk_live_fc56e3abP46bKek65b44';
 const YOCO_API_URL = 'https://online.yoco.com/v1/charges';
 const YOCO_PAYOUT_URL = 'https://online.yoco.com/v1/payouts';
 const YOCO_CHECKOUT_URL = 'https://payments.yoco.com/api/checkouts';
